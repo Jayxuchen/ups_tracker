@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
-
-	"github.com/jayxuchen/ups_tracker/kafka"
 	"github.com/namsral/flag"
 	"github.com/rs/zerolog/log"
+	"strings"
 )
 
 var logger = log.With().Str("pkg", "main").Logger()
+var writer *kafka.Writer
 
 var (
 	listenAddrAPI string
@@ -63,9 +62,36 @@ func postDataToKafka(msg TrackingUpdate) {
 		fmt.Printf("error while marshalling json: %s", err.Error())
 		return
 	}
-	err = kafka.Push(parent, nil, formInBytes)
+	message := kafka.Message{
+		Key:   key,
+		Value: value,
+		Time:  time.Now(),
+	}
+
+	err = writer.WriteMessages(parent, message)
+
 	if err != nil {
 		fmt.Printf("error while push message into kafka: %s", err.Error())
 		return
 	}
+}
+
+//Configure configures kafka writer
+func Configure(kafkaBrokerUrls []string, clientID string, topic string) (w *kafka.Writer, err error) {
+	dialer := &kafka.Dialer{
+		Timeout:  10 * time.Second,
+		ClientID: clientID,
+	}
+
+	config := kafka.WriterConfig{
+		Brokers:      kafkaBrokerUrls,
+		Topic:        topic,
+		Balancer:     &kafka.LeastBytes{},
+		Dialer:       dialer,
+		WriteTimeout: 10 * time.Second,
+		ReadTimeout:  10 * time.Second,
+	}
+	w = kafka.NewWriter(config)
+	writer = w
+	return w, nil
 }
