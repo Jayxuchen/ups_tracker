@@ -1,18 +1,16 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/namsral/flag"
 	"github.com/rs/zerolog/log"
-	"github.com/segmentio/kafka-go"
-	"strings"
-	"time"
+	//	"time"
 )
 
 var logger = log.With().Str("pkg", "main").Logger()
-var writer *kafka.Writer
+var producer *kafka.Producer
 
 var (
 	listenAddrAPI string
@@ -26,6 +24,7 @@ var (
 
 //TrackingUpdate describes message from Vendor API to Kafka
 type TrackingUpdate struct {
+	Index          int    `json:"index"`
 	Vendor         string `json:"vendor"`
 	TrackingNumber string `json:"trackingNumber"`
 	Status         string `json:"status"`
@@ -35,31 +34,46 @@ func main() {
 	flag.StringVar(&kafkaBrokerURL, "kafka-brokers", "localhost:19092", "Kafka brokers in comma separated value")
 	flag.BoolVar(&kafkaVerbose, "kafka-verbose", true, "Kafka verbose logging")
 	flag.StringVar(&kafkaClientID, "kafka-client-id", "my-kafka-client", "Kafka client id to connect")
-	flag.StringVar(&kafkaTopic, "kafka-topic", "foo", "Kafka topic to push")
+	flag.StringVar(&kafkaTopic, "kafka-topic", "shipmentUpdates", "Kafka topic to push")
 
 	flag.Parse()
 
 	// connect to kafka
-	kafkaProducer, err := Configure(strings.Split(kafkaBrokerURL, ","), kafkaClientID, kafkaTopic)
+	producer, err := Configure(kafkaBrokerURL, kafkaClientID)
 	if err != nil {
 		logger.Error().Str("error", err.Error()).Msg("unable to configure kafka")
 		return
 	}
-	defer kafkaProducer.Close()
+	defer producer.Close()
 
 	trackingUpdate := TrackingUpdate{
+		Index:          0,
 		Vendor:         "ups",
 		TrackingNumber: "1ZABC",
 		Status:         "delivered"}
 
-	for {
-		postDataToKafka(trackingUpdate)
+	go func() {
+		for e := range producer.Events() {
+			switch ev := e.(type) {
+			case *kafka.Message:
+				if ev.TopicPartition.Error != nil {
+					fmt.Printf("Delivery failed: %v\n", ev.TopicPartition)
+				} else {
+					fmt.Printf("Delivered message to %v\n", ev.TopicPartition)
+				}
+			}
+		}
+	}()
+
+	for i := 0; i < 10; i++ {
+		trackingUpdate.Index = i
+		postDataToKafka(trackingUpdate, kafkaTopic)
+		//		time.Sleep(time.Second)
 	}
+	producer.Flush(15 * 1000)
 }
 
-func postDataToKafka(msg TrackingUpdate) {
-	parent := context.Background()
-	defer parent.Done()
+func postDataToKafka(msg TrackingUpdate, topic string) {
 
 	formInBytes, err := json.Marshal(msg)
 	if err != nil {
@@ -67,12 +81,11 @@ func postDataToKafka(msg TrackingUpdate) {
 		return
 	}
 	message := kafka.Message{
-		Key:   nil,
-		Value: formInBytes,
-		Time:  time.Now(),
+		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+		Value:          formInBytes,
 	}
 
-	err = writer.WriteMessages(parent, message)
+	err = producer.Produce(&message, nil)
 
 	if err != nil {
 		fmt.Printf("error while push message into kafka: %s", err.Error())
@@ -81,21 +94,14 @@ func postDataToKafka(msg TrackingUpdate) {
 }
 
 //Configure configures kafka writer
-func Configure(kafkaBrokerUrls []string, clientID string, topic string) (w *kafka.Writer, err error) {
-	dialer := &kafka.Dialer{
-		Timeout:  10 * time.Second,
-		ClientID: clientID,
+func Configure(kafkaBrokerUrls string, clientID string) (w *kafka.Producer, err error) {
+	p, err := kafka.NewProducer(&kafka.ConfigMap{
+		"bootstrap.servers": kafkaBrokerUrls,
+		"client.id":         clientID,
+		"acks":              "all"})
+	if err != nil {
+		fmt.Printf("Failed to create producer: %s\n", err)
 	}
-
-	config := kafka.WriterConfig{
-		Brokers: kafkaBrokerUrls,
-		Topic:   topic,
-		//		Balancer:     &kafka.LeastBytes{},
-		Dialer:       dialer,
-		WriteTimeout: 10 * time.Second,
-		ReadTimeout:  10 * time.Second,
-	}
-	w = kafka.NewWriter(config)
-	writer = w
-	return w, nil
+	producer = p
+	return p, err
 }
