@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"github.com/namsral/flag"
 	"github.com/rs/zerolog/log"
+	"github.com/segmentio/kafka-go"
 	"strings"
+	"time"
 )
 
 var logger = log.With().Str("pkg", "main").Logger()
@@ -30,7 +32,7 @@ type TrackingUpdate struct {
 }
 
 func main() {
-	flag.StringVar(&kafkaBrokerURL, "kafka-brokers", "localhost:19092,localhost:29092,localhost:39092", "Kafka brokers in comma separated value")
+	flag.StringVar(&kafkaBrokerURL, "kafka-brokers", "localhost:19092", "Kafka brokers in comma separated value")
 	flag.BoolVar(&kafkaVerbose, "kafka-verbose", true, "Kafka verbose logging")
 	flag.StringVar(&kafkaClientID, "kafka-client-id", "my-kafka-client", "Kafka client id to connect")
 	flag.StringVar(&kafkaTopic, "kafka-topic", "foo", "Kafka topic to push")
@@ -38,7 +40,7 @@ func main() {
 	flag.Parse()
 
 	// connect to kafka
-	kafkaProducer, err := kafka.Configure(strings.Split(kafkaBrokerURL, ","), kafkaClientID, kafkaTopic)
+	kafkaProducer, err := Configure(strings.Split(kafkaBrokerURL, ","), kafkaClientID, kafkaTopic)
 	if err != nil {
 		logger.Error().Str("error", err.Error()).Msg("unable to configure kafka")
 		return
@@ -50,7 +52,9 @@ func main() {
 		TrackingNumber: "1ZABC",
 		Status:         "delivered"}
 
-	postDataToKafka(trackingUpdate)
+	for {
+		postDataToKafka(trackingUpdate)
+	}
 }
 
 func postDataToKafka(msg TrackingUpdate) {
@@ -63,8 +67,8 @@ func postDataToKafka(msg TrackingUpdate) {
 		return
 	}
 	message := kafka.Message{
-		Key:   key,
-		Value: value,
+		Key:   nil,
+		Value: formInBytes,
 		Time:  time.Now(),
 	}
 
@@ -84,9 +88,9 @@ func Configure(kafkaBrokerUrls []string, clientID string, topic string) (w *kafk
 	}
 
 	config := kafka.WriterConfig{
-		Brokers:      kafkaBrokerUrls,
-		Topic:        topic,
-		Balancer:     &kafka.LeastBytes{},
+		Brokers: kafkaBrokerUrls,
+		Topic:   topic,
+		//		Balancer:     &kafka.LeastBytes{},
 		Dialer:       dialer,
 		WriteTimeout: 10 * time.Second,
 		ReadTimeout:  10 * time.Second,

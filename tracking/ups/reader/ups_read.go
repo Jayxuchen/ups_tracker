@@ -28,7 +28,7 @@ type TrackingUpdate struct {
 }
 
 func main() {
-	flag.StringVar(&kafkaBrokerUrl, "kafka-brokers", "localhost:19092,localhost:29092,localhost:39092", "Kafka brokers in comma separated value")
+	flag.StringVar(&kafkaBrokerUrl, "kafka-brokers", "localhost:19092", "Kafka brokers in comma separated value")
 	flag.BoolVar(&kafkaVerbose, "kafka-verbose", true, "Kafka verbose logging")
 	flag.StringVar(&kafkaTopic, "kafka-topic", "foo", "Kafka topic. Only one topic per worker.")
 	flag.StringVar(&kafkaConsumerGroup, "kafka-consumer-group", "consumer-group", "Kafka consumer group")
@@ -40,10 +40,10 @@ func main() {
 
 	// make a new reader that consumes from topic-A
 	config := kafka.ReaderConfig{
-		Brokers:         brokers,
-		GroupID:         kafkaClientId,
-		Topic:           kafkaTopic,
-		Partition:       0,
+		Brokers: brokers,
+		GroupID: kafkaClientId,
+		Topic:   kafkaTopic,
+		//		Partition:       0,
 		MinBytes:        10e3,            // 10KB
 		MaxBytes:        10e6,            // 10MB
 		MaxWait:         1 * time.Second, // Maximum amount of time to wait for new data to come when fetching batches of messages from kafka.
