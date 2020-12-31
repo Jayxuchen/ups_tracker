@@ -1,15 +1,11 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
-	"time"
-
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/namsral/flag"
 	"github.com/rs/zerolog/log"
-	"github.com/segmentio/kafka-go"
 )
 
 var (
@@ -22,6 +18,7 @@ var (
 )
 
 type TrackingUpdate struct {
+	Index          int    `json:"index"`
 	Vendor         string `json:"vendor"`
 	TrackingNumber string `json:"trackingNumber"`
 	Status         string `json:"status"`
@@ -30,31 +27,30 @@ type TrackingUpdate struct {
 func main() {
 	flag.StringVar(&kafkaBrokerUrl, "kafka-brokers", "localhost:19092", "Kafka brokers in comma separated value")
 	flag.BoolVar(&kafkaVerbose, "kafka-verbose", true, "Kafka verbose logging")
-	flag.StringVar(&kafkaTopic, "kafka-topic", "foo", "Kafka topic. Only one topic per worker.")
+	flag.StringVar(&kafkaTopic, "kafka-topic", "shipmentUpdates", "Kafka topic. Only one topic per worker.")
 	flag.StringVar(&kafkaConsumerGroup, "kafka-consumer-group", "consumer-group", "Kafka consumer group")
 	flag.StringVar(&kafkaClientId, "kafka-client-id", "my-client-id", "Kafka client id")
 
 	flag.Parse()
 
-	brokers := strings.Split(kafkaBrokerUrl, ",")
-
-	// make a new reader that consumes from topic-A
-	config := kafka.ReaderConfig{
-		Brokers: brokers,
-		GroupID: kafkaClientId,
-		Topic:   kafkaTopic,
-		//		Partition:       0,
-		MinBytes:        10e3,            // 10KB
-		MaxBytes:        10e6,            // 10MB
-		MaxWait:         1 * time.Second, // Maximum amount of time to wait for new data to come when fetching batches of messages from kafka.
-		ReadLagInterval: -1,
+	// make a new consumer that consumes from topic-A
+	config := kafka.ConfigMap{
+		"bootstrap.servers": kafkaBrokerUrl,
+		"group.id":          kafkaConsumerGroup,
+		"auto.offset.reset": "earliest",
 	}
 
-	reader := kafka.NewReader(config)
-	defer reader.Close()
+	consumer, err := kafka.NewConsumer(&config)
+	if err != nil {
+		log.Error().Msgf("error while receiving message: %s", err.Error())
+		return
+	}
+	defer consumer.Close()
+
+	consumer.Subscribe(kafkaTopic, nil)
 
 	for {
-		m, err := reader.ReadMessage(context.Background())
+		m, err := consumer.ReadMessage(-1)
 		if err != nil {
 			log.Error().Msgf("error while receiving message: %s", err.Error())
 			continue
@@ -67,7 +63,7 @@ func main() {
 			panic(err)
 		}
 
-		fmt.Printf("message at topic/partition/offset %v/%v/%v\n", m.Topic, m.Partition, m.Offset)
+		fmt.Printf("message at topic/partition/offset %v/%v/%v\n", m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
 		fmt.Printf("%+v\n", trackingUpdate)
 	}
 }
