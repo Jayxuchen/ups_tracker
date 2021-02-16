@@ -22,31 +22,6 @@ var (
 	kafkaTopic     string
 )
 
-//TrackingUpdate describes message from Vendor API to Kafka
-type TrackingUpdate struct {
-	Index          int    `json:"index"`
-	Vendor         string `json:"vendor"`
-	TrackingNumber string `json:"trackingNumber"`
-	Status         string `json:"status"`
-	Activity       []struct {
-		Location struct {
-			Address struct {
-				City          string `json:"city"`
-				StateProvince string `json:"stateProvince"`
-				PostalCode    string `json:"postalCode"`
-				Country       string `json:"country"`
-			} `json:"address"`
-		} `json:"location"`
-		Status struct {
-			Type        string `json:"type"`
-			Description string `json:"description"`
-			Code        string `json:"code"`
-		} `json:"status"`
-		Date string `json:"date"`
-		Time string `json:"time"`
-	} `json:"activity"`
-}
-
 func main() {
 	flag.StringVar(&kafkaBrokerURL, "kafka-brokers", "localhost:19092", "Kafka brokers in comma separated value")
 	flag.BoolVar(&kafkaVerbose, "kafka-verbose", true, "Kafka verbose logging")
@@ -62,14 +37,14 @@ func main() {
 		return
 	}
 	defer producer.Close()
-	api.TrackingInfo("ED862603C199EE72", "1Z88V3219089072404", 10)
-	return
-
-	trackingUpdate := TrackingUpdate{
-		Index:          0,
-		Vendor:         "ups",
-		TrackingNumber: "1ZABC",
-		Status:         "delivered"}
+	trackingUpdate := api.TrackingInfo("ED862603C199EE72", "1Z88V3219089072404", 10)
+	/*
+		trackingUpdate := TrackingUpdate{
+			Index:          0,
+			Vendor:         "ups",
+			TrackingNumber: "1ZABC",
+			Status:         "delivered"}
+	*/
 
 	go func() {
 		for e := range producer.Events() {
@@ -84,15 +59,14 @@ func main() {
 		}
 	}()
 
-	for i := 0; i < 10; i++ {
-		trackingUpdate.Index = i
+	for i := 0; i < 1; i++ {
 		postDataToKafka(trackingUpdate, kafkaTopic)
 		//		time.Sleep(time.Second)
 	}
 	producer.Flush(15 * 1000)
 }
 
-func postDataToKafka(msg TrackingUpdate, topic string) {
+func postDataToKafka(msg *api.Response, topic string) {
 
 	formInBytes, err := json.Marshal(msg)
 	if err != nil {
