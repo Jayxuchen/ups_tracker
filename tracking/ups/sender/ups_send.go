@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/jayxuchen/ups_tracker/tracking/ups/sender/api"
 	"github.com/namsral/flag"
 	"github.com/rs/zerolog/log"
-	//	"time"
 )
 
 var logger = log.With().Str("pkg", "main").Logger()
@@ -28,6 +28,23 @@ type TrackingUpdate struct {
 	Vendor         string `json:"vendor"`
 	TrackingNumber string `json:"trackingNumber"`
 	Status         string `json:"status"`
+	Activity       []struct {
+		Location struct {
+			Address struct {
+				City          string `json:"city"`
+				StateProvince string `json:"stateProvince"`
+				PostalCode    string `json:"postalCode"`
+				Country       string `json:"country"`
+			} `json:"address"`
+		} `json:"location"`
+		Status struct {
+			Type        string `json:"type"`
+			Description string `json:"description"`
+			Code        string `json:"code"`
+		} `json:"status"`
+		Date string `json:"date"`
+		Time string `json:"time"`
+	} `json:"activity"`
 }
 
 func main() {
@@ -45,6 +62,8 @@ func main() {
 		return
 	}
 	defer producer.Close()
+	api.TrackingInfo("ED862603C199EE72", "1Z88V3219089072404", 10)
+	return
 
 	trackingUpdate := TrackingUpdate{
 		Index:          0,
